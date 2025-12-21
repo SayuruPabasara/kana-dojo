@@ -52,6 +52,7 @@ const CalligraphyPage = () => {
   const characterData =
     selectedKanaType === 'hiragana' ? hiraganaData : katakanaData;
   const totalStrokes = selectedCharacter?.strokes?.length || 0;
+  const completedCount = completedCharacters.length;
 
   // Set default character on mount
   useEffect(() => {
@@ -209,7 +210,7 @@ const CalligraphyPage = () => {
             {/* Top: Step 2 bar */}
             <button
               onClick={() => setActiveStep(2)}
-              className='h-12 bg-[var(--card-color)] rounded-xl flex items-center justify-between px-4 border border-[var(--border-color)] hover:border-[var(--main-color)] transition-colors'
+              className='h-18 bg-[var(--card-color)] rounded-xl flex items-center justify-between px-4 border border-[var(--border-color)] hover:border-[var(--main-color)] transition-colors'
             >
               <div className='flex items-center gap-3'>
                 <div className='w-7 h-7 rounded-full bg-[var(--background-color)] border border-[var(--border-color)] text-[var(--secondary-color)] flex items-center justify-center text-sm font-medium'>
@@ -240,18 +241,20 @@ const CalligraphyPage = () => {
             {/* Middle: Step 1 bar + Content */}
             <div className='flex-1 flex gap-3'>
               {/* Step 1 Vertical Bar (Active) */}
-              <div className='w-16 bg-[var(--card-color)] border-2 border-[var(--main-color)] rounded-xl flex flex-col items-center justify-center py-4 relative'>
-                <div
-                  className='text-[10px] font-medium text-[var(--main-color)] tracking-normal'
-                  style={{ writingMode: 'vertical-lr' }}
-                >
-                  SELECT CHARACTER
-                </div>
-                <div
-                  className='text-[8px] text-[var(--secondary-color)] mt-1'
-                  style={{ writingMode: 'vertical-lr' }}
-                >
-                  文字を選ぶ
+              <div className='w-20 bg-[var(--card-color)] border-2 border-[var(--main-color)] rounded-2xl flex flex-col items-center justify-center py-4 relative'>
+                <div className='flex flex-col items-center justify-center h-48'>
+                  <div
+                    className='text-[10px] font-medium text-[var(--main-color)] tracking-normal'
+                    style={{ writingMode: 'vertical-lr' }}
+                  >
+                    SELECT CHARACTER
+                  </div>
+                  <div
+                    className='text-[8px] text-[var(--secondary-color)] mt-1'
+                    style={{ writingMode: 'vertical-lr' }}
+                  >
+                    文字を選ぶ
+                  </div>
                 </div>
                 <div className='w-7 h-7 rounded-full bg-[var(--main-color)] text-[var(--background-color)] flex items-center justify-center font-medium text-sm absolute bottom-3'>
                   1
@@ -272,8 +275,13 @@ const CalligraphyPage = () => {
                           : 'text-[var(--secondary-color)] hover:text-[var(--main-color)]'
                       )}
                     >
-                      ひらがな Hiragana
-                      <span className='text-xs opacity-70 ml-1'>0/46</span>
+                      <div className='flex flex-col items-center leading-tight m-1'>
+                        <span className='text-sm'>ひらがな</span>
+                        <span className='text-xs opacity-70'>Hiragana</span>
+                      </div>
+                      <span className='text-xs opacity-70 ml-1'>
+                        {completedCount}/46
+                      </span>
                     </button>
                     <button
                       onClick={() => setSelectedKanaType('katakana')}
@@ -284,14 +292,19 @@ const CalligraphyPage = () => {
                           : 'text-[var(--secondary-color)] hover:text-[var(--main-color)]'
                       )}
                     >
-                      カタカナ Katakana
-                      <span className='text-xs opacity-70 ml-1'>0/46</span>
+                      <div className='flex flex-col items-center leading-tight m-1'>
+                        <span className='text-sm'>ひらがな</span>
+                        <span className='text-xs opacity-70'>Hiragana</span>
+                      </div>
+                      <span className='text-xs opacity-70 ml-1'>
+                        {completedCount}/46
+                      </span>
                     </button>
                   </div>
                 </div>
 
                 {/* Character Grid - Square cards */}
-                <div className='grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2 max-w-3xl mx-auto'>
+                <div className='grid grid-cols-5 sm:grid-cols-8 md:grid-cols-5 gap-2 max-w-3xl mx-auto'>
                   {characterData.map(char => {
                     const isSelected =
                       selectedCharacter?.character === char.character;
@@ -321,7 +334,7 @@ const CalligraphyPage = () => {
             </div>
 
             {/* Bottom: Step 3 bar (disabled) */}
-            <div className='h-12 bg-[var(--card-color)] rounded-xl flex items-center justify-between px-4 border border-[var(--border-color)] opacity-50'>
+            <div className='h-18 bg-[var(--card-color)] rounded-xl flex items-center justify-between px-4 border border-[var(--border-color)]'>
               <div className='flex items-center gap-3'>
                 <div className='w-7 h-7 rounded-full bg-[var(--background-color)] border border-[var(--border-color)] text-[var(--secondary-color)] flex items-center justify-center text-sm font-medium'>
                   3
@@ -398,28 +411,28 @@ const CalligraphyPage = () => {
             </div>
 
             {/* Brush Options */}
-            <div className='flex gap-3 justify-center'>
+            <div className='flex justify-center ml-10 gap-24'>
               <BrushSelector showLabels={true} size='md' />
             </div>
           </div>
 
           {/* Middle */}
-          <div className='flex-1 flex gap-3'>
+          <div className='flex-1 flex gap-3 p-4'>
             {/* Step 1 Collapsed */}
             <button
               onClick={() => setActiveStep(1)}
-              className='w-20 bg-[var(--card-color)] rounded-xl flex flex-col items-center justify-center py-4 border border-[var(--border-color)] hover:border-[var(--main-color)] transition-colors'
+              className='w-24 rounded-2xl bg-[var(--card-color)] flex flex-col items-center justify-center py-4 border border-[var(--border-color)] hover:border-[var(--main-color)] transition-colors'
             >
-              <div className='text-4xl font-japanese text-[var(--main-color)]'>
+              <div className='text-5xl font-japanese text-[var(--main-color)]'>
                 {selectedCharacter?.character || 'あ'}
               </div>
-              <p className='text-[9px] text-[var(--secondary-color)] mt-1'>
+              <p className='text-[14px] text-[var(--secondary-color)] mt-1'>
                 {selectedKanaType === 'hiragana' ? 'Hiragana' : 'Katakana'}
               </p>
-              <p className='text-[8px] text-[var(--secondary-color)] opacity-60'>
+              <p className='text-[12px] text-[var(--secondary-color)] opacity-60'>
                 Next: {nextChar?.character || 'い'}
               </p>
-              <div className='w-6 h-6 rounded-full bg-[var(--background-color)] border border-[var(--border-color)] text-[var(--secondary-color)] flex items-center justify-center text-[10px] font-medium mt-2'>
+              <div className='w-12 h-12 rounded-full bg-[var(--background-color)] border border-[var(--border-color)] text-[var(--secondary-color)] flex items-center justify-center text-xl font-bold mt-10'>
                 1
               </div>
             </button>
@@ -428,7 +441,7 @@ const CalligraphyPage = () => {
             <div className='flex-1 flex items-center justify-center'>
               <button
                 onClick={() => setActiveStep(3)}
-                className='px-12 py-8 bg-[var(--card-color)] hover:bg-[var(--background-color)] rounded-2xl text-center border border-[var(--border-color)] hover:border-[var(--main-color)] transition-all'
+                className='px-24 py-16 bg-[var(--card-color)] hover:bg-[var(--background-color)] rounded-2xl text-center border border-[var(--border-color)] hover:border-[var(--main-color)] transition-all'
               >
                 <div className='w-14 h-14 rounded-full bg-[var(--background-color)] border border-[var(--border-color)] text-[var(--secondary-color)] flex items-center justify-center font-bold text-xl mx-auto mb-3'>
                   3
