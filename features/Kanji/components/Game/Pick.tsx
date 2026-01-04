@@ -115,10 +115,8 @@ const KanjiPickGame = ({ selectedKanjiObjs, isHidden }: KanjiPickGameProps) => {
   const {
     isWordBuildingMode: isWordBuildingModeFromHook,
     isWordBuildingReverse,
-    wordLength,
     decideNextMode: decideNextWordBuildingMode,
-    recordWrongAnswer: recordWordBuildingWrong,
-    exitWordBuildingMode
+    recordWrongAnswer: recordWordBuildingWrong
   } = useWordBuildingMode({
     minConsecutiveForTrigger: FORCE_WORD_BUILDING_MODE ? 0 : 3,
     baseProbability: FORCE_WORD_BUILDING_MODE ? 1.0 : 0.15,
@@ -264,9 +262,6 @@ const KanjiPickGame = ({ selectedKanjiObjs, isHidden }: KanjiPickGameProps) => {
     if (isHidden) speedStopwatch.pause();
   }, [isHidden]);
 
-  // Exit word building mode if not enough characters
-  const hasEnoughCharsForWordBuilding = selectedKanjiObjs.length >= wordLength;
-
   if (!selectedKanjiObjs || selectedKanjiObjs.length === 0) {
     return null;
   }
@@ -284,23 +279,17 @@ const KanjiPickGame = ({ selectedKanjiObjs, isHidden }: KanjiPickGameProps) => {
     recordWrongAnswer();
   };
 
-  // Render word building game if in that mode and have enough characters
-  if (isWordBuildingMode && hasEnoughCharsForWordBuilding) {
+  // Render word building game if in that mode
+  if (isWordBuildingMode) {
     return (
       <WordBuildingGame
         selectedKanjiObjs={selectedKanjiObjs}
         isHidden={isHidden}
         isReverse={isWordBuildingReverse}
-        wordLength={wordLength}
         onCorrect={handleWordBuildingCorrect}
         onWrong={handleWordBuildingWrong}
       />
     );
-  }
-
-  // Exit word building mode if not enough chars
-  if (isWordBuildingMode && !hasEnoughCharsForWordBuilding) {
-    exitWordBuildingMode();
   }
 
   const handleOptionClick = (selectedOption: string) => {

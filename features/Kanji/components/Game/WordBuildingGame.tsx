@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import useKanjiStore, { IKanjiObj } from '@/features/Kanji/store/useKanjiStore';
-import { CircleCheck, CircleX, CircleArrowRight, Trash2 } from 'lucide-react';
 import { Random } from 'random-js';
 import { useCorrect, useError, useClick } from '@/shared/hooks/useAudio';
 import { getGlobalAdaptiveSelector } from '@/shared/lib/adaptiveSelection';
@@ -11,7 +10,6 @@ import Stars from '@/shared/components/Game/Stars';
 import { useCrazyModeTrigger } from '@/features/CrazyMode/hooks/useCrazyModeTrigger';
 import useStatsStore from '@/features/Progress/store/useStatsStore';
 import { useShallow } from 'zustand/react/shallow';
-import { ActionButton } from '@/shared/components/ui/ActionButton';
 import { useStopwatch } from 'react-timer-hook';
 import { useSmartReverseMode } from '@/shared/hooks/useSmartReverseMode';
 import { GameBottomBar } from '@/shared/components/Game/GameBottomBar';
@@ -60,17 +58,7 @@ const tileEntryVariants = {
   }
 };
 
-// Celebration bounce animation for correct answers - Duolingo-style sequential jump
-const celebrationContainerVariants = {
-  idle: {},
-  celebrate: {
-    transition: {
-      staggerChildren: 0.18,
-      delayChildren: 0.08
-    }
-  }
-};
-
+// Celebration bounce animation for correct answers
 const celebrationBounceVariants = {
   idle: {
     y: 0,
@@ -93,7 +81,7 @@ const celebrationBounceVariants = {
 
 // Tile styles shared between active and blank tiles
 const tileBaseStyles =
-  'relative flex items-center justify-center rounded-3xl px-6 sm:px-8 py-3 text-2xl sm:text-3xl border-b-10 transition-all duration-150';
+  'relative flex items-center justify-center rounded-3xl px-6 sm:px-8 py-3 text-xl sm:text-2xl border-b-10 transition-all duration-150';
 
 interface TileProps {
   id: string;
@@ -161,11 +149,11 @@ interface KanjiWordBuildingGameProps {
   isHidden: boolean;
   /** Optional: externally controlled reverse mode. If not provided, uses internal useSmartReverseMode */
   isReverse?: boolean;
-  /** Optional: word length. Defaults to 3 */
-  wordLength?: number;
-  /** Optional: callback when answer is correct. If not provided, handles internally */
+  /** Optional: number of distractor tiles. Defaults to 3 (so 4 total options) */
+  distractorCount?: number;
+  /** Optional: callback when answer is correct */
   onCorrect?: (chars: string[]) => void;
-  /** Optional: callback when answer is wrong. If not provided, handles internally */
+  /** Optional: callback when answer is wrong */
   onWrong?: () => void;
 }
 
@@ -173,7 +161,7 @@ const KanjiWordBuildingGame = ({
   selectedKanjiObjs,
   isHidden,
   isReverse: externalIsReverse,
-  wordLength: externalWordLength = 3,
+  distractorCount: externalDistractorCount = 3,
   onCorrect: externalOnCorrect,
   onWrong: externalOnWrong
 }: KanjiWordBuildingGameProps) => {
@@ -186,7 +174,10 @@ const KanjiWordBuildingGame = ({
 
   // Use external isReverse if provided, otherwise use internal smart mode
   const isReverse = externalIsReverse ?? internalIsReverse;
-  const wordLength = externalWordLength;
+  const distractorCount = Math.min(
+    externalDistractorCount,
+    selectedKanjiObjs.length - 1
+  );
 
   // Get the current JLPT level from the Kanji store
   const selectedKanjiCollection = useKanjiStore(
@@ -235,119 +226,83 @@ const KanjiWordBuildingGame = ({
     [selectedKanjiObjs]
   );
 
-  // Also create a map from meaning to kanji for reverse mode
-  const meaningToKanjiMap = useMemo(
-    () => new Map(selectedKanjiObjs.map(obj => [obj.meanings[0], obj])),
-    [selectedKanjiObjs]
-  );
-
   const [bottomBarState, setBottomBarState] = useState<BottomBarState>('check');
 
-  // Generate a word (array of kanji characters) and distractors
-  const generateWord = useCallback(() => {
-    // In normal mode: show kanji, answer with meanings
-    // In reverse mode: show meanings, answer with kanji
-    const sourceChars = selectedKanjiObjs.map(obj =>
-      isReverse ? obj.meanings[0] : obj.kanjiChar
-    );
-
-    if (sourceChars.length < wordLength) {
-      return { wordChars: [], answerChars: [], allTiles: [], kanjiChars: [] };
+  // Generate question: 1 kanji with multiple answer options
+  const generateQuestion = useCallback(() => {
+    if (selectedKanjiObjs.length === 0) {
+      return { kanjiChar: '', correctAnswer: '', allTiles: [] };
     }
 
-    const wordChars: string[] = [];
-    const kanjiChars: string[] = []; // Always track the kanji for stats
-    const usedChars = new Set<string>();
+    // Select a kanji using adaptive selection
+    const kanjiChars = selectedKanjiObjs.map(obj => obj.kanjiChar);
+    const selectedKanji = adaptiveSelector.selectWeightedCharacter(kanjiChars);
+    adaptiveSelector.markCharacterSeen(selectedKanji);
 
-    for (let i = 0; i < wordLength; i++) {
-      const available = sourceChars.filter(c => !usedChars.has(c));
-      if (available.length === 0) break;
-
-      // For adaptive selection, always use kanji characters
-      const availableKanji = isReverse
-        ? (available
-            .map(meaning => meaningToKanjiMap.get(meaning)?.kanjiChar)
-            .filter(Boolean) as string[])
-        : available;
-
-      const selectedKanji =
-        adaptiveSelector.selectWeightedCharacter(availableKanji);
-      const selectedKanjiObj = kanjiObjMap.get(selectedKanji);
-
-      if (!selectedKanjiObj) continue;
-
-      const selected = isReverse ? selectedKanjiObj.meanings[0] : selectedKanji;
-      wordChars.push(selected);
-      kanjiChars.push(selectedKanji);
-      usedChars.add(selected);
-      adaptiveSelector.markCharacterSeen(selectedKanji);
+    const selectedKanjiObj = kanjiObjMap.get(selectedKanji);
+    if (!selectedKanjiObj) {
+      return { kanjiChar: '', correctAnswer: '', allTiles: [] };
     }
 
-    // Answer chars are the opposite of word chars
-    const answerChars = isReverse
-      ? kanjiChars // reverse: show meanings, answer is kanji
-      : wordChars.map(k => kanjiObjMap.get(k)?.meanings[0] || ''); // normal: show kanji, answer is meaning
+    // In normal mode: show kanji, answer with meaning
+    // In reverse mode: show meaning, answer with kanji
+    const correctAnswer = isReverse
+      ? selectedKanji
+      : selectedKanjiObj.meanings[0];
 
-    // Generate distractors from the answer pool
-    const distractorCount = Math.min(3, selectedKanjiObjs.length - wordLength);
+    // Generate distractors
     const distractorSource = isReverse
-      ? selectedKanjiObjs.map(obj => obj.kanjiChar)
-      : selectedKanjiObjs.map(obj => obj.meanings[0]);
+      ? selectedKanjiObjs
+          .filter(obj => obj.kanjiChar !== selectedKanji)
+          .map(obj => obj.kanjiChar)
+      : selectedKanjiObjs
+          .filter(obj => obj.kanjiChar !== selectedKanji)
+          .map(obj => obj.meanings[0]);
 
-    const distractors: string[] = [];
-    const usedAnswers = new Set(answerChars);
+    const distractors = distractorSource
+      .sort(() => random.real(0, 1) - 0.5)
+      .slice(0, distractorCount);
 
-    for (let i = 0; i < distractorCount; i++) {
-      const available = distractorSource.filter(
-        c => !usedAnswers.has(c) && !distractors.includes(c)
-      );
-      if (available.length === 0) break;
-      const selected = available[random.integer(0, available.length - 1)];
-      distractors.push(selected);
-    }
-
-    const allTiles = [...answerChars, ...distractors].sort(
+    // Shuffle all tiles
+    const allTiles = [correctAnswer, ...distractors].sort(
       () => random.real(0, 1) - 0.5
     );
 
-    return { wordChars, answerChars, allTiles, kanjiChars };
-  }, [
-    isReverse,
-    selectedKanjiObjs,
-    wordLength,
-    kanjiObjMap,
-    meaningToKanjiMap
-  ]);
+    return {
+      kanjiChar: selectedKanji,
+      correctAnswer,
+      allTiles,
+      displayChar: isReverse ? selectedKanjiObj.meanings[0] : selectedKanji
+    };
+  }, [isReverse, selectedKanjiObjs, distractorCount, kanjiObjMap]);
 
-  const [wordData, setWordData] = useState(() => generateWord());
-  const [placedTiles, setPlacedTiles] = useState<string[]>([]);
+  const [questionData, setQuestionData] = useState(() => generateQuestion());
+  const [selectedTile, setSelectedTile] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isCelebrating, setIsCelebrating] = useState(false);
 
   const resetGame = useCallback(() => {
-    const newWord = generateWord();
-    setWordData(newWord);
-    setPlacedTiles([]);
+    const newQuestion = generateQuestion();
+    setQuestionData(newQuestion);
+    setSelectedTile(null);
     setIsChecking(false);
     setIsCelebrating(false);
     setBottomBarState('check');
     // Start timing for the new question
     speedStopwatch.reset();
     speedStopwatch.start();
-  }, [generateWord]);
-  // Note: speedStopwatch deliberately excluded - only calling methods
+  }, [generateQuestion]);
 
   useEffect(() => {
     resetGame();
-  }, [isReverse, wordLength, resetGame]);
+  }, [isReverse, resetGame]);
 
   // Pause stopwatch when game is hidden
   useEffect(() => {
     if (isHidden) {
       speedStopwatch.pause();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHidden]); // speedStopwatch intentionally excluded - only calling methods
+  }, [isHidden]);
 
   // Keyboard shortcut for Enter/Space to trigger button
   useEffect(() => {
@@ -367,7 +322,7 @@ const KanjiWordBuildingGame = ({
 
   // Handle Check button
   const handleCheck = useCallback(() => {
-    if (placedTiles.length === 0) return;
+    if (!selectedTile) return;
 
     // Stop timing and record answer time
     speedStopwatch.pause();
@@ -376,9 +331,7 @@ const KanjiWordBuildingGame = ({
     playClick();
     setIsChecking(true);
 
-    const isCorrect =
-      placedTiles.length === wordData.answerChars.length &&
-      placedTiles.every((tile, i) => tile === wordData.answerChars[i]);
+    const isCorrect = selectedTile === questionData.correctAnswer;
 
     if (isCorrect) {
       // Record answer time for speed achievements
@@ -390,17 +343,14 @@ const KanjiWordBuildingGame = ({
       triggerCrazyMode();
       resetWrongStreak();
 
-      // Track stats for each kanji in the word
-      wordData.kanjiChars.forEach(kanjiChar => {
-        addCharacterToHistory(kanjiChar);
-        incrementCharacterScore(kanjiChar, 'correct');
-        adaptiveSelector.updateCharacterWeight(kanjiChar, true);
-        // Track kanji-specific stats for achievements
-        incrementKanjiCorrect(selectedKanjiCollection.toUpperCase());
-      });
+      // Track stats for the kanji
+      addCharacterToHistory(questionData.kanjiChar);
+      incrementCharacterScore(questionData.kanjiChar, 'correct');
+      adaptiveSelector.updateCharacterWeight(questionData.kanjiChar, true);
+      incrementKanjiCorrect(selectedKanjiCollection.toUpperCase());
 
       incrementCorrectAnswers();
-      setScore(score + wordData.kanjiChars.length);
+      setScore(score + 1);
       setBottomBarState('correct');
       setIsCelebrating(true);
 
@@ -415,10 +365,8 @@ const KanjiWordBuildingGame = ({
       incrementWrongStreak();
       incrementWrongAnswers();
 
-      wordData.kanjiChars.forEach(kanjiChar => {
-        incrementCharacterScore(kanjiChar, 'wrong');
-        adaptiveSelector.updateCharacterWeight(kanjiChar, false);
-      });
+      incrementCharacterScore(questionData.kanjiChar, 'wrong');
+      adaptiveSelector.updateCharacterWeight(questionData.kanjiChar, false);
 
       if (score - 1 >= 0) {
         setScore(score - 1);
@@ -431,12 +379,11 @@ const KanjiWordBuildingGame = ({
         recordReverseModeWrong();
       }
 
-      // Call external callback if provided
       externalOnWrong?.();
     }
   }, [
-    placedTiles,
-    wordData,
+    selectedTile,
+    questionData,
     playClick,
     playCorrect,
     playErrorTwice,
@@ -457,80 +404,67 @@ const KanjiWordBuildingGame = ({
     recordReverseModeWrong,
     addCorrectAnswerTime,
     recordAnswerTime
-    // speedStopwatch intentionally excluded - only calling methods
   ]);
 
   // Handle Continue button (only for correct answers)
   const handleContinue = useCallback(() => {
     playClick();
-    externalOnCorrect?.(wordData.kanjiChars);
+    externalOnCorrect?.([questionData.kanjiChar]);
     resetGame();
-  }, [playClick, externalOnCorrect, wordData.kanjiChars, resetGame]);
+  }, [playClick, externalOnCorrect, questionData.kanjiChar, resetGame]);
 
   // Handle Try Again button (for wrong answers)
   const handleTryAgain = useCallback(() => {
     playClick();
-    // Clear placed tiles and reset to check state, but keep the same word
-    setPlacedTiles([]);
+    setSelectedTile(null);
     setIsChecking(false);
     setBottomBarState('check');
-    // Restart timing for the retry
     speedStopwatch.reset();
     speedStopwatch.start();
   }, [playClick]);
-  // Note: speedStopwatch deliberately excluded - only calling methods
 
-  // Handle tile click - add or remove
+  // Handle tile click - select a tile
   const handleTileClick = useCallback(
     (char: string) => {
       if (isChecking && bottomBarState !== 'wrong') return;
 
       playClick();
 
-      // If in wrong state, reset to check state and continue with normal tile logic
+      // If in wrong state, reset to check state
       if (bottomBarState === 'wrong') {
         setIsChecking(false);
         setBottomBarState('check');
-        // Restart timing for the retry
         speedStopwatch.reset();
         speedStopwatch.start();
       }
 
-      // Normal tile add/remove logic
-      if (placedTiles.includes(char)) {
-        setPlacedTiles(prev => prev.filter(c => c !== char));
+      // Toggle selection
+      if (selectedTile === char) {
+        setSelectedTile(null);
       } else {
-        setPlacedTiles(prev => [...prev, char]);
+        setSelectedTile(char);
       }
     },
-    [isChecking, bottomBarState, placedTiles, playClick]
+    [isChecking, bottomBarState, selectedTile, playClick]
   );
-  // Note: speedStopwatch deliberately excluded - only calling methods
 
-  const handleClearPlaced = useCallback(() => {
-    if (isChecking) return;
-    playClick();
-    setPlacedTiles([]);
-  }, [isChecking, playClick]);
-
-  // Not enough characters for word building
-  if (
-    selectedKanjiObjs.length < wordLength ||
-    wordData.wordChars.length === 0
-  ) {
+  // Not enough characters
+  if (selectedKanjiObjs.length < 2 || !questionData.kanjiChar) {
     return null;
   }
 
-  const canCheck = placedTiles.length > 0 && !isChecking;
+  const canCheck = selectedTile !== null && !isChecking;
   const showContinue = bottomBarState === 'correct';
   const showTryAgain = bottomBarState === 'wrong';
-  const showFeedback = showContinue || showTryAgain;
 
   // Helper to get reading for a kanji tile
   const getKanjiReading = (kanjiChar: string) => {
     const obj = kanjiObjMap.get(kanjiChar);
     return obj?.onyomi[0] || obj?.kunyomi[0];
   };
+
+  // Get the kanji object for display
+  const currentKanjiObj = kanjiObjMap.get(questionData.kanjiChar);
 
   return (
     <div
@@ -539,75 +473,64 @@ const KanjiWordBuildingGame = ({
         isHidden && 'hidden'
       )}
     >
-      {/* Word Display - shows kanji in normal mode, meanings in reverse mode */}
+      {/* Question Display - shows kanji in normal mode, meaning in reverse mode */}
       <div className='flex flex-row items-center gap-1'>
         <motion.div
           className='flex flex-row items-center gap-2'
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          key={wordData.wordChars.join('')}
+          key={questionData.kanjiChar}
         >
-          {wordData.wordChars.map((char, i) => (
-            <span
-              key={`word-${i}`}
-              className={clsx(
-                isReverse ? 'text-4xl sm:text-5xl' : 'text-7xl sm:text-8xl'
-              )}
-              lang={!isReverse ? 'ja' : undefined}
-            >
-              {!isReverse ? (
-                <FuriganaText text={char} reading={getKanjiReading(char)} />
-              ) : (
-                char
-              )}
-            </span>
-          ))}
+          <span
+            className={clsx(
+              isReverse ? 'text-5xl sm:text-6xl' : 'text-8xl sm:text-9xl'
+            )}
+            lang={!isReverse ? 'ja' : undefined}
+          >
+            {!isReverse ? (
+              <FuriganaText
+                text={questionData.kanjiChar}
+                reading={getKanjiReading(questionData.kanjiChar)}
+              />
+            ) : (
+              currentKanjiObj?.meanings[0]
+            )}
+          </span>
         </motion.div>
       </div>
 
-      {/* Answer Row Area */}
+      {/* Answer Row Area - shows selected tile */}
       <div className='flex w-full flex-col items-center'>
-        <div className='flex min-h-[5rem] w-full items-center border-b-2 border-[var(--border-color)] px-2 pb-2 md:w-3/4 lg:w-2/3 xl:w-1/2'>
+        <div className='flex min-h-[5rem] w-full items-center justify-center border-b-2 border-[var(--border-color)] px-2 pb-2 md:w-3/4 lg:w-2/3 xl:w-1/2'>
           <motion.div
-            className='flex flex-row flex-wrap justify-start gap-3'
-            variants={celebrationContainerVariants}
+            className='flex flex-row flex-wrap justify-center gap-3'
+            variants={celebrationBounceVariants}
             initial='idle'
             animate={isCelebrating ? 'celebrate' : 'idle'}
           >
-            {/* Render placed tiles in the answer row */}
-            {placedTiles.map(char => {
-              const isKanjiTile = isReverse; // In reverse mode, answers are kanji
-              return (
-                <motion.div
-                  key={`answer-tile-${char}`}
-                  variants={celebrationBounceVariants}
-                  style={{ originY: 1 }}
-                >
-                  <ActiveTile
-                    id={`tile-${char}`}
-                    char={char}
-                    reading={isKanjiTile ? getKanjiReading(char) : undefined}
-                    onClick={() => handleTileClick(char)}
-                    isDisabled={isChecking && bottomBarState !== 'wrong'}
-                    isKanji={isKanjiTile}
-                  />
-                </motion.div>
-              );
-            })}
+            {selectedTile && (
+              <ActiveTile
+                id={`tile-${selectedTile}`}
+                char={selectedTile}
+                reading={isReverse ? getKanjiReading(selectedTile) : undefined}
+                onClick={() => handleTileClick(selectedTile)}
+                isDisabled={isChecking && bottomBarState !== 'wrong'}
+                isKanji={isReverse}
+              />
+            )}
           </motion.div>
         </div>
       </div>
 
-      {/* Available Tiles - 2 rows on mobile, centered */}
+      {/* Available Tiles - 2 rows */}
       {(() => {
-        // Split tiles into 2 rows for mobile (3 per row max)
-        const tilesPerRow = 3;
-        const topRowTiles = wordData.allTiles.slice(0, tilesPerRow);
-        const bottomRowTiles = wordData.allTiles.slice(tilesPerRow);
+        const tilesPerRow = 2;
+        const topRowTiles = questionData.allTiles.slice(0, tilesPerRow);
+        const bottomRowTiles = questionData.allTiles.slice(tilesPerRow);
 
-        const renderTile = (char: string, index: number) => {
-          const isPlaced = placedTiles.includes(char);
-          const isKanjiTile = isReverse; // In reverse mode, answers are kanji
+        const renderTile = (char: string) => {
+          const isSelected = selectedTile === char;
+          const isKanjiTile = isReverse;
 
           return (
             <motion.div
@@ -616,14 +539,14 @@ const KanjiWordBuildingGame = ({
               variants={tileEntryVariants}
               style={{ perspective: 1000 }}
             >
-              {/* Blank tile is ALWAYS rendered underneath (z-0) */}
+              {/* Blank tile underneath */}
               <BlankTile
                 char={char}
                 reading={isKanjiTile ? getKanjiReading(char) : undefined}
               />
 
-              {/* Active tile overlays on top (z-10 + absolute) when NOT placed */}
-              {!isPlaced && (
+              {/* Active tile on top when NOT selected */}
+              {!isSelected && (
                 <div className='absolute inset-0 z-10'>
                   <ActiveTile
                     id={`tile-${char}`}
@@ -641,20 +564,18 @@ const KanjiWordBuildingGame = ({
 
         return (
           <motion.div
-            key={wordData.wordChars.join('')}
+            key={questionData.kanjiChar}
             className='flex flex-col items-center gap-3 sm:gap-4'
             variants={tileContainerVariants}
             initial='hidden'
             animate='visible'
           >
             <motion.div className='flex flex-row justify-center gap-3 sm:gap-4'>
-              {topRowTiles.map((char, i) => renderTile(char, i))}
+              {topRowTiles.map(char => renderTile(char))}
             </motion.div>
             {bottomRowTiles.length > 0 && (
               <motion.div className='flex flex-row justify-center gap-3 sm:gap-4'>
-                {bottomRowTiles.map((char, i) =>
-                  renderTile(char, i + tilesPerRow)
-                )}
+                {bottomRowTiles.map(char => renderTile(char))}
               </motion.div>
             )}
           </motion.div>
@@ -673,7 +594,7 @@ const KanjiWordBuildingGame = ({
               : handleCheck
         }
         canCheck={canCheck}
-        feedbackContent={wordData.answerChars.join(' ')}
+        feedbackContent={questionData.correctAnswer}
         buttonRef={buttonRef}
       />
 
