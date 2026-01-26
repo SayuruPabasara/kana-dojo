@@ -42,7 +42,7 @@ export function CategoryHeader({
               Category Collection
             </span>
             {count > 0 && (
-              <span className='font-mono text-[10px] opacity-40'>
+              <span className='font-mono text-[10px] text-[var(--secondary-color)] opacity-40'>
                 / {count} items
               </span>
             )}
